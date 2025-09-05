@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Chart from 'chart.js/auto';
 import annotationPlugin from 'chartjs-plugin-annotation';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import { saveAs } from 'file-saver';
 import './Simulador.css';
 
 Chart.register(annotationPlugin);
@@ -19,11 +22,14 @@ const Simulador = () => {
     opex_anual: 1000000,
     horizonte_anios: 25,
     tasa_descuento: 0.10,
-    anios_deduccion_renta: 3
+    anios_deduccion_renta: 3,
+    anios_leasing: 10,
+    tasa_leasing: 0.08
   });
 
   const [resultado, setResultado] = useState(null);
   const [verConBeneficios, setVerConBeneficios] = useState(false);
+  const [verLeasing, setVerLeasing] = useState(false);
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
 
@@ -34,7 +40,7 @@ const Simulador = () => {
 
   const handleSubmit = async e => {
     e.preventDefault();
-    const res = await fetch('https://cash-48v3.onrender.com/calcular', {
+    const res = await fetch('http://127.0.0.1:8000/calcular', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData)
@@ -42,6 +48,7 @@ const Simulador = () => {
     const data = await res.json();
     setResultado(data);
     setVerConBeneficios(false);
+    setVerLeasing(false);
   };
 
   useEffect(() => {
@@ -51,10 +58,29 @@ const Simulador = () => {
       }
 
       const ctx = chartRef.current.getContext('2d');
-      const flujos = verConBeneficios ? resultado.flujos_con_bt : resultado.flujos_sin_bt;
-      const payback = verConBeneficios ? resultado.payback_year_con_bt : resultado.payback_year;
-      const color = verConBeneficios ? 'blue' : 'blue';
-      const label = verConBeneficios ? 'Flujo con Beneficios' : 'Flujo sin Beneficios';
+      let flujos, label, color, indicadores;
+
+      if (verLeasing && verConBeneficios) {
+        flujos = resultado.flujos_leasing_con_bt;
+        indicadores = resultado.leasing_con_bt;
+        label = "Leasing + Beneficios";
+        color = "purple";
+      } else if (verLeasing) {
+        flujos = resultado.flujos_leasing_sin_bt;
+        indicadores = resultado.leasing_sin_bt;
+        label = "Solo Leasing";
+        color = "orange";
+      } else if (verConBeneficios) {
+        flujos = resultado.flujos_con_bt;
+        indicadores = resultado.con_bt;
+        label = "Solo Beneficios";
+        color = "green";
+      } else {
+        flujos = resultado.flujos_sin_bt;
+        indicadores = resultado.sin_bt;
+        label = "Sin Beneficios ni Leasing";
+        color = "blue";
+      }
 
       chartInstance.current = new Chart(ctx, {
         type: 'line',
@@ -64,11 +90,15 @@ const Simulador = () => {
             label,
             data: flujos,
             borderColor: color,
-            backgroundColor: color === 'green' ? 'rgba(40, 167, 69, 0.2)' : 'rgba(0, 123, 255, 0.2)',
+            backgroundColor: color === "blue" ? "rgba(0,123,255,0.1)" :
+                             color === "green" ? "rgba(40,167,69,0.1)" :
+                             color === "orange" ? "rgba(255,165,0,0.1)" :
+                             "rgba(128,0,128,0.1)",
             fill: true,
-            tension: 0.1,
-            pointRadius: 4,
-            pointHoverRadius: 6
+            tension: 0.4,
+            cubicInterpolationMode: 'monotone',
+            pointRadius: 3,
+            pointHoverRadius: 5
           }]
         },
         options: {
@@ -78,27 +108,10 @@ const Simulador = () => {
             title: {
               display: true,
               text: 'Flujo de Caja Anual del Proyecto'
-            },
-            annotation: {
-              annotations: {
-                paybackLine: {
-                  type: 'line',
-                  scaleID: 'x',
-                  value: payback,
-                  borderColor: verConBeneficios ? 'lime' : 'red',
-                  borderWidth: 2,
-                  label: {
-                    content: verConBeneficios ? 'Payback con BT' : 'Payback sin BT',
-                    enabled: true,
-                    position: 'start'
-                  }
-                }
-              }
             }
           },
           scales: {
             y: {
-              beginAtZero: false,
               title: { display: true, text: 'COP' }
             },
             x: {
@@ -113,7 +126,25 @@ const Simulador = () => {
         }
       });
     }
-  }, [resultado, verConBeneficios]);
+  }, [resultado, verConBeneficios, verLeasing]);
+
+  const exportPDF = () => {
+    const doc = new jsPDF();
+    doc.text("Resultados Financieros Proyecto FV", 14, 15);
+    doc.autoTable({
+      head: [Object.keys(resultado.tabla_resultados[0])],
+      body: resultado.tabla_resultados.map(row => Object.values(row))
+    });
+    doc.save("resultado_fv.pdf");
+  };
+
+  const exportCSV = () => {
+    const rows = [Object.keys(resultado.tabla_resultados[0])];
+    resultado.tabla_resultados.forEach(r => rows.push(Object.values(r)));
+    const csv = rows.map(r => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    saveAs(blob, "resultado_fv.csv");
+  };
 
   return (
     <div className="simulador-container">
@@ -121,22 +152,17 @@ const Simulador = () => {
       <form onSubmit={handleSubmit}>
         {Object.keys(formData).map(key => (
           <div className="mb-3" key={key}>
-          <label className="form-label">
-  {key
-    .replace(/_/g, ' ')
-    .replace(/anios/g, 'años') // ← corrige "anios" a "años"
-}
-</label>
-      
-              <input
+            <label className="form-label">
+              {key.replace(/_/g, ' ').replace(/anios/g, 'años')}
+            </label>
+            <input
               type="number"
               step="any"
               name={key}
               className="form-control"
               value={formData[key]}
               onChange={handleChange}
-              min={key === "anios_deduccion_renta" ? 1 : undefined}
-              max={key === "anios_deduccion_renta" ? 15 : undefined}
+              min={key.includes("anios") ? 1 : undefined}
               required
             />
           </div>
@@ -145,52 +171,64 @@ const Simulador = () => {
       </form>
 
       {resultado && (
-        <div className="form-check mt-3">
-          <input
-            className="form-check-input"
-            type="checkbox"
-            id="verConBeneficios"
-            checked={verConBeneficios}
-            onChange={() => setVerConBeneficios(!verConBeneficios)}
-          />
-          <label className="form-check-label" htmlFor="verConBeneficios">
-            Ver resultados con beneficios tributarios
-          </label>
-        </div>
+        <>
+          <div className="form-check mt-3">
+            <input
+              className="form-check-input"
+              type="checkbox"
+              id="verConBeneficios"
+              checked={verConBeneficios}
+              onChange={() => setVerConBeneficios(!verConBeneficios)}
+            />
+            <label className="form-check-label" htmlFor="verConBeneficios">
+              Ver resultados con beneficios tributarios
+            </label>
+          </div>
+
+          <div className="form-check mt-2">
+            <input
+              className="form-check-input"
+              type="checkbox"
+              id="verLeasing"
+              checked={verLeasing}
+              onChange={() => setVerLeasing(!verLeasing)}
+            />
+            <label className="form-check-label" htmlFor="verLeasing">
+              Ver resultados con leasing
+            </label>
+          </div>
+        </>
       )}
 
       {resultado && (
-  <div className="mt-4">
-    <div className="card shadow-sm border-0 bg-light">
-      <div className="card-body">
-        <h5 className="card-title fw-bold mb-4 text-primary">📊 Resultado Financiero</h5>
+        <div className="mt-4">
+          <canvas ref={chartRef} width="600" height="300" />
 
-        <p><strong>VPN:</strong> ${(verConBeneficios ? resultado.vpn_con_bt : resultado.vpn_sin_bt).toLocaleString()} COP</p>
-        <p><strong>TIR:</strong> {verConBeneficios ? resultado.tir_con_bt : resultado.tir_sin_bt} %</p>
-        <p><strong>Payback:</strong> Año {verConBeneficios ? resultado.payback_year_con_bt : resultado.payback_year}</p>
-        
-        <hr />
-
-        <p><strong>Ingreso por generación año 1:</strong> ${resultado.ingreso_total_anual.toLocaleString()} COP</p>
-        <p><strong>Autoconsumo:</strong> ${resultado.autoconsumo_anual.toLocaleString()}</p>
-        <p><strong>Excedente 1:</strong> ${resultado.excedente1_anual.toLocaleString()}</p>
-        <p><strong>Excedente 2:</strong> ${resultado.excedente2_anual.toLocaleString()}</p>
-
-        {verConBeneficios && (
-          <>
-            <hr />
-            <p><strong>Depreciación acelerada año 1:</strong> ${resultado.beneficio_depreciacion_anio1.toLocaleString()}</p>
-            <p><strong>Deducción renta año 1:</strong> ${resultado.beneficio_renta_anio1.toLocaleString()}</p>
-            <p><strong>Total beneficios tributarios año 1:</strong> ${resultado.beneficio_total_anio1.toLocaleString()}</p>
-          </>
-        )}
-      </div>
-    </div>
-
-    <canvas ref={chartRef} width="600" height="300" className="mt-4" />
-  </div>
-)}
-
+          <h5 className="mt-4 fw-bold">📊 Resultados Detallados</h5>
+          <div className="table-responsive">
+            <table className="table table-bordered table-sm mt-2">
+              <thead className="table-light">
+                <tr>
+                  {Object.keys(resultado.tabla_resultados[0]).map((col, i) => (
+                    <th key={i}>{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {resultado.tabla_resultados.map((row, idx) => (
+                  <tr key={idx}>
+                    {Object.values(row).map((val, j) => (
+                      <td key={j}>{val}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button onClick={exportPDF} className="btn btn-danger me-2">Exportar PDF</button>
+          <button onClick={exportCSV} className="btn btn-success">Exportar CSV</button>
+        </div>
+      )}
     </div>
   );
 };
