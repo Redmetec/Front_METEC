@@ -1,14 +1,232 @@
+/* ============================
+   Layout general
+============================ */
+body, html {
+  margin: 0;
+  padding: 0;
+  background: #f5f7fa;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: #333;
+  min-height: 100%;
+}
+
+#root, .App {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ============================
+   Contenedor principal
+============================ */
 .simulador-container {
+  max-width: 1000px;
+  width: 100%;
+  margin: 40px auto;
+  padding: 30px;
   background: #ffffff;
-  padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0px 4px 10px rgba(0,0,0,0.1);
+  border-radius: 16px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  transition: all 0.3s ease;
+  display: block;
+}
+
+.simulador-container:hover {
+  transform: translateY(-2px);
 }
 
 .simulador-container h2 {
-  color: #0066cc;
+  text-align: center;
+  font-size: 2rem;
+  font-weight: 800;
+  color: #0d6efd;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 25px;
 }
 
+/* ============================
+   Formulario en dos columnas
+============================ */
 .simulador-container form {
-  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.simulador-container form .mb-3 {
+  display: flex;
+  flex-direction: column;
+}
+
+.simulador-container form .btn-primary {
+  grid-column: span 2;
+  margin-top: 15px;
+  padding: 12px;
+  font-weight: 600;
+  font-size: 1.1rem;
+  border-radius: 10px;
+  transition: all 0.3s;
+}
+
+.simulador-container form .btn-primary:hover {
+  background: #084298;
+  transform: translateY(-1px);
+}
+
+/* ============================
+   Inputs
+============================ */
+.simulador-container form .form-label {
+  font-weight: 600;
+  color: #555;
+}
+
+.simulador-container form .form-control {
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 10px;
+  transition: all 0.2s;
+}
+
+.simulador-container form .form-control:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0 8px rgba(13, 110, 253, 0.3);
+}
+
+/* ============================
+   Checkboxes
+============================ */
+.form-check {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  transition: background 0.3s ease;
+}
+
+.form-check:hover {
+  background: #e9ecef;
+}
+
+.form-check-label {
+  margin-left: 6px;
+  font-weight: 500;
+  color: #444;
+}
+
+/* ============================
+   Canvas (gráfica)
+============================ */
+canvas {
+  background: #fdfdfd;
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 20px;
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+/* ============================
+   Indicadores Financieros
+============================ */
+.list-group {
+  margin-top: 15px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.list-group-item {
+  font-size: 1rem;
+  font-weight: 500;
+  padding: 12px 15px;
+  border: none;
+  border-bottom: 1px solid #eee;
+}
+
+.list-group-item:last-child {
+  border-bottom: none;
+}
+
+.list-group-item b {
+  color: #0d6efd;
+  margin-right: 6px;
+}
+
+/* ============================
+   Tablas
+============================ */
+.table-responsive {
+  margin-top: 20px;
+}
+
+.table {
+  font-size: 0.9rem;
+  text-align: center;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.table thead {
+  background: #0d6efd;
+  color: #fff;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.table tbody tr:nth-child(even) {
+  background-color: #f8f9fa;
+}
+
+.table tbody tr:hover {
+  background-color: #e9f0ff;
+  transition: background 0.3s ease;
+}
+
+/* ============================
+   Botones de exportación
+============================ */
+.btn-danger,
+.btn-success {
+  padding: 10px 16px;
+  font-weight: 600;
+  border-radius: 10px;
+  margin-top: 10px;
+  transition: all 0.3s ease;
+}
+
+.btn-danger:hover {
+  background: #bb2d3b;
+  transform: translateY(-2px);
+}
+
+.btn-success:hover {
+  background: #157347;
+  transform: translateY(-2px);
+}
+
+/* ============================
+   Responsividad
+============================ */
+@media (max-width: 768px) {
+  .simulador-container form {
+    grid-template-columns: 1fr;
+  }
+
+  .simulador-container form .btn-primary {
+    grid-column: span 1;
+  }
+
+  .simulador-container {
+    padding: 20px;
+    margin: 20px auto;
+  }
+
+  .simulador-container h2 {
+    font-size: 1.6rem;
+  }
+
+  .table {
+    font-size: 0.8rem;
+  }
 }
