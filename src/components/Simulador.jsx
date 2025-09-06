@@ -8,7 +8,7 @@ import './Simulador.css';
 
 Chart.register(annotationPlugin);
 
-// 👉 Función para formatear COP
+// 👉 Formatear COP
 const formatCOP = (value) => {
   if (typeof value !== "number") return value;
   return new Intl.NumberFormat("es-CO", {
@@ -50,7 +50,7 @@ const Simulador = () => {
 
   const handleSubmit = async e => {
     e.preventDefault();
-    const res = await fetch('https://back-metec.onrender.com/calcular', {
+    const res = await fetch('http://127.0.0.1:8000/calcular', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData)
@@ -61,7 +61,7 @@ const Simulador = () => {
     setVerLeasing(false);
   };
 
-  // 🔹 Selecciona los flujos según escenario
+  // 🔹 Selecciona flujos según escenario
   const getFlujos = () => {
     if (!resultado) return [];
     if (verLeasing && verConBeneficios) return resultado.flujos_leasing_con_bt;
@@ -70,7 +70,7 @@ const Simulador = () => {
     return resultado.flujos_sin_bt;
   };
 
-  // 🔹 Genera tabla dinámica completa con Flujo Neto y Flujo Acumulado recalculados
+  // 🔹 Construye tabla dinámica con columnas condicionales
   const getTablaDinamica = () => {
     if (!resultado) return [];
 
@@ -80,11 +80,34 @@ const Simulador = () => {
     return resultado.tabla_resultados.map((row, i) => {
       const flujo = flujos[i] ?? row["Flujo Neto"];
       acumulado += flujo;
-      return {
-        ...row,
-        "Flujo Neto": flujo,
-        "Flujo Acumulado": acumulado
+
+      let fila = {
+        "Año": row["Año"],
+        "Generación (kWh)": row["Generación (kWh)"],
+        "Tarifa Energía (COP/kWh)": row["Tarifa Energía (COP/kWh)"],
+        "Ingreso Autoconsumo": row["Ingreso Autoconsumo"],
+        "Ingreso Excedente1": row["Ingreso Excedente1"],
+        "Ingreso Excedente2": row["Ingreso Excedente2"],
+        "OPEX": row["OPEX"]
       };
+
+      // Leasing justo después de OPEX
+      if (verLeasing) {
+        fila["Costo Leasing"] = row["Costo Leasing"];
+      }
+
+      fila["Flujo Base"] = row["Flujo Base"];
+
+      // Beneficios después de Flujo Base
+      if (verConBeneficios) {
+        fila["Beneficio Depreciación"] = row["Beneficio Depreciación"];
+        fila["Beneficio Renta"] = row["Beneficio Renta"];
+      }
+
+      fila["Flujo Neto"] = flujo;
+      fila["Flujo Acumulado"] = acumulado;
+
+      return fila;
     });
   };
 
@@ -155,30 +178,47 @@ const Simulador = () => {
     }
   }, [resultado, verConBeneficios, verLeasing]);
 
+  // ====== Exportar PDF ======
 const exportPDF = () => {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
 
-  // ====== CABECERA ======
+  // Cabecera
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
   doc.setTextColor(40, 60, 120);
-  doc.text(" Informe Financiero Proyecto FV", 14, 15);
+  doc.text("Informe Financiero Proyecto FV", 14, 15);
 
   doc.setFontSize(10);
   doc.setTextColor(100);
   doc.text("Generado automáticamente - " + new Date().toLocaleDateString("es-CO"), 14, 22);
 
-  // ====== GRÁFICO EN LA PRIMERA PÁGINA ======
+  // ====== GRÁFICO EN PDF (alta calidad) ======
   const canvas = chartRef.current;
   if (canvas) {
-    const imgData = canvas.toDataURL("image/png", 1.0);
+    // Crear un canvas temporal con mayor resolución
+    const scale = 2; // puedes probar con 3 si quieres más nitidez
+    const tmpCanvas = document.createElement("canvas");
+    tmpCanvas.width = canvas.width * scale;
+    tmpCanvas.height = canvas.height * scale;
+
+    const tmpCtx = tmpCanvas.getContext("2d");
+    tmpCtx.scale(scale, scale);
+    tmpCtx.drawImage(canvas, 0, 0);
+
+    const imgData = tmpCanvas.toDataURL("image/png", 1.0);
+    const imgProps = doc.getImageProperties(imgData);
+
+    const pdfWidth = doc.internal.pageSize.getWidth() - 30;
+    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
     doc.setFontSize(14);
     doc.setTextColor(40, 60, 120);
     doc.text("Evolución del Flujo de Caja Anual", 14, 35);
-    doc.addImage(imgData, "PNG", 15, 40, 260, 120);
+
+    doc.addImage(imgData, "PNG", 15, 40, pdfWidth, pdfHeight, "", "FAST");
   }
 
-  // ====== TABLA DETALLADA (en página aparte) ======
+  // ====== TABLA DETALLADA ======
   doc.addPage();
   doc.setFontSize(14);
   doc.setTextColor(40, 60, 120);
@@ -188,7 +228,11 @@ const exportPDF = () => {
     startY: 25,
     head: [Object.keys(getTablaDinamica()[0] || {})],
     body: getTablaDinamica().map(row =>
-      Object.values(row).map(val => (typeof val === "number" ? formatCOP(val) : val))
+      Object.entries(row).map(([col, val]) =>
+        (typeof val === "number" && col !== "Año" && col !== "Generación (kWh)")
+          ? formatCOP(val)
+          : val
+      )
     ),
     theme: "striped",
     headStyles: {
@@ -210,15 +254,20 @@ const exportPDF = () => {
     doc.text("© 2025 RED SOL Colombia", 14, 200);
   }
 
-  // Descargar
   doc.save("Informe_FV.pdf");
 };
 
-
+  // ====== Exportar CSV ======
   const exportCSV = () => {
     const rows = [Object.keys(getTablaDinamica()[0] || {})];
     getTablaDinamica().forEach(r =>
-      rows.push(Object.values(r).map(val => (typeof val === "number" ? formatCOP(val) : val)))
+      rows.push(
+        Object.entries(r).map(([col, val]) =>
+          (typeof val === "number" && col !== "Año" && col !== "Generación (kWh)")
+            ? formatCOP(val)
+            : val
+        )
+      )
     );
     const csv = rows.map(r => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -251,48 +300,7 @@ const exportPDF = () => {
 
       {resultado && (
         <>
-          {/* ✅ Comparación de escenarios */}
-          <h5 className="mt-4 fw-bold">📊 Comparación de Escenarios</h5>
-          <div className="table-responsive">
-            <table className="table table-bordered table-sm mt-2">
-              <thead>
-                <tr>
-                  <th>Escenario</th>
-                  <th>VPN</th>
-                  <th>TIR</th>
-                  <th>Payback</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Sin Beneficios ni Leasing</td>
-                  <td>{formatCOP(resultado.sin_bt.vpn)}</td>
-                  <td>{resultado.sin_bt.tir ? resultado.sin_bt.tir + "%" : "N/A"}</td>
-                  <td>{resultado.sin_bt.payback ? resultado.sin_bt.payback + " años" : "No recupera"}</td>
-                </tr>
-                <tr>
-                  <td>Con Beneficios</td>
-                  <td>{formatCOP(resultado.con_bt.vpn)}</td>
-                  <td>{resultado.con_bt.tir ? resultado.con_bt.tir + "%" : "N/A"}</td>
-                  <td>{resultado.con_bt.payback ? resultado.con_bt.payback + " años" : "No recupera"}</td>
-                </tr>
-                <tr>
-                  <td>Con Leasing</td>
-                  <td>{formatCOP(resultado.leasing_sin_bt.vpn)}</td>
-                  <td>{resultado.leasing_sin_bt.tir ? resultado.leasing_sin_bt.tir + "%" : "N/A"}</td>
-                  <td>{resultado.leasing_sin_bt.payback ? resultado.leasing_sin_bt.payback + " años" : "No recupera"}</td>
-                </tr>
-                <tr>
-                  <td>Leasing + Beneficios</td>
-                  <td>{formatCOP(resultado.leasing_con_bt.vpn)}</td>
-                  <td>{resultado.leasing_con_bt.tir ? resultado.leasing_con_bt.tir + "%" : "N/A"}</td>
-                  <td>{resultado.leasing_con_bt.payback ? resultado.leasing_con_bt.payback + " años" : "No recupera"}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          {/* ✅ Filtros */}
+          {/* Filtros */}
           <div className="form-check mt-3">
             <input
               className="form-check-input"
@@ -338,8 +346,18 @@ const exportPDF = () => {
               <tbody>
                 {getTablaDinamica().map((row, idx) => (
                   <tr key={idx}>
-                    {Object.values(row).map((val, j) => (
-                      <td key={j}>{typeof val === "number" ? formatCOP(val) : val}</td>
+                    {Object.entries(row).map(([col, val], j) => (
+                      <td
+                        key={j}
+                        className={
+                          col.includes("Beneficio") ? "beneficio" :
+                          col.includes("Leasing") ? "leasing" : ""
+                        }
+                      >
+                        {(typeof val === "number" && col !== "Año" && col !== "Generación (kWh)")
+                          ? formatCOP(val)
+                          : val}
+                      </td>
                     ))}
                   </tr>
                 ))}
